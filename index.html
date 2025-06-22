@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Visualizador de Resultados de Cacerías</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body { background: #23272f; color: #e0e0e0; font-family: sans-serif; margin: 0; }
+    .container { max-width: 900px; margin: 30px auto; background: #2d323c; border-radius: 10px; padding: 24px; }
+    h1, h2 { color: #00bcd4; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    th, td { padding: 8px 12px; border-bottom: 1px solid #374151; text-align: center; }
+    th { background: #374151; color: #fff; }
+    tr:nth-child(even) { background: #263238; }
+    tr:nth-child(odd) { background: #21272b; }
+    select, button { padding: 8px; border-radius: 5px; border: none; margin: 8px 0; }
+    button { background: #00bcd4; color: #fff; cursor: pointer; }
+    .info { margin-bottom: 16px; }
+    a { color: #4fc3f7; }
+
+    /* --- NUEVO: estilos modernos para inputs --- */
+    .modern-input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid #374151;
+      border-radius: 6px;
+      background: #23272f;
+      color: #e0e0e0;
+      font-size: 1em;
+      margin: 6px 0 16px 0;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      box-sizing: border-box;
+    }
+    .modern-input:focus {
+      border-color: #00bcd4;
+      box-shadow: 0 0 0 2px #00bcd455;
+      background: #263238;
+    }
+    .modern-label {
+      font-weight: 500;
+      color: #b2ebf2;
+      margin-bottom: 2px;
+      display: block;
+      letter-spacing: 0.5px;
+    }
+    .participante .modern-input {
+      width: auto;
+      min-width: 80px;
+      margin-right: 8px;
+      margin-bottom: 0;
+    }
+    .participante label {
+      margin-right: 10px;
+      display: inline-block;
+    }
+    .participante {
+      margin-bottom: 12px;
+    }
+    /* Botón eliminar participante */
+    .btn-eliminar {
+      background: #e57373;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 12px;
+      margin-left: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-eliminar:hover {
+      background: #c62828;
+    }
+
+    /* --- NUEVO: Responsive --- */
+    @media (max-width: 600px) {
+      .container {
+        padding: 8px;
+        border-radius: 0;
+        margin: 0;
+        max-width: 100vw;
+      }
+      h1 { font-size: 1.3em; }
+      h2 { font-size: 1.1em; }
+      .modern-input { font-size: 1em; padding: 8px 10px; }
+      .participante .modern-input { min-width: 60px; }
+      .btn-eliminar { padding: 5px 8px; font-size: 0.95em; }
+      table, th, td { font-size: 0.95em; }
+    }
+    /* Scroll horizontal para tablas en móvil */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin-bottom: 24px;
+    }
+    /* Modal scroll y centrado en móvil */
+    #modalCaceria {
+      align-items: flex-start !important;
+      justify-content: center !important;
+      padding-top: 10px;
+    }
+    #formCaceria {
+      max-width: 98vw !important;
+      min-width: 0 !important;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Visualizador de resultados de cacerías</h1>
+    <p>¡Tus resultados, visualizados al instante!</p>
+    <h2>📊 Clasificación General</h2>
+    <div id="clasificacion" class="table-responsive"></div>
+    <h2>🏆 Detalles de Cacerías Individuales</h2>
+    <button onclick="cargarCacerias()">Cargar Cacerías</button>
+    <button onclick="pedirPasswordCaceria()">Añadir Cacería</button>
+    <select id="caceriasDropdown" onchange="mostrarCaceria()" disabled>
+      <option value="">Selecciona una cacería</option>
+    </select>
+    <div id="caceriaInfo" class="info"></div>
+    <div id="caceriaResultados" class="table-responsive"></div>
+
+    <!-- Formulario modal para añadir cacería -->
+    <div id="modalCaceria" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(30,32,40,0.95); z-index:1000; align-items:center; justify-content:center;">
+      <form id="formCaceria"
+        style="background:#23272f; padding:24px; border-radius:10px; max-width:600px; margin:auto; color:#fff;
+               display:flex; flex-direction:column; max-height:90vh; overflow-y:auto;">
+        <h2>Añadir Cacería</h2>
+        <label class="modern-label">Nombre de la cacería:
+          <input name="nombre" required class="modern-input">
+        </label>
+        <label class="modern-label">Ubicación:
+          <input name="ubicacion" class="modern-input">
+        </label>
+        <label class="modern-label">ID Zorro:
+          <input name="zorro" class="modern-input">
+        </label>
+        <label class="modern-label">Hora de salida:
+          <input name="hora_salida" class="modern-input">
+        </label>
+        <hr>
+        <h3>Participantes</h3>
+        <div id="participantes"></div>
+        <button type="button" onclick="agregarParticipante()" style="background:#4fc3f7; margin-bottom:10px;">Añadir Participante</button>
+        <br>
+        <button type="submit">Guardar</button>
+        <button type="button" onclick="cerrarFormularioCaceria()" style="background:#888;">Cancelar</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    // Configura aquí tu Firebase
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "caceripro.firebaseapp.com",
+      databaseURL: "https://caceripro-default-rtdb.europe-west1.firebasedatabase.app/",
+      projectId: "caceripro",
+      // ...otros datos si los necesitas...
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Clasificación General
+    function cargarClasificacion() {
+      const clasDiv = document.getElementById('clasificacion');
+      clasDiv.innerHTML = "Cargando...";
+      db.ref("cacerias").once("value").then(snapshot => {
+        const cacerias = snapshot.val();
+        const participantes = {};
+        if (cacerias) {
+          Object.values(cacerias).forEach(cac => {
+            if (cac.participantes) {
+              Object.values(cac.participantes).forEach(part => {
+                if (String(part.mostrar_en_clasificacion ?? "true").toLowerCase() !== "true") return;
+                const nombre = part.nombre_participante || "Desconocido";
+                const puntos = parseInt(part.puntos || 0);
+                if (!participantes[nombre]) participantes[nombre] = { coche: nombre, total_cacerias: 0, puntos_totales: 0 };
+                participantes[nombre].total_cacerias += 1;
+                participantes[nombre].puntos_totales += puntos;
+              });
+            }
+          });
+        }
+        const lista = Object.values(participantes).sort((a, b) => b.puntos_totales - a.puntos_totales);
+        let html = "<table><tr><th>Coche</th><th>Total cacerías</th><th>Puntos totales</th></tr>";
+        lista.forEach(row => {
+          html += `<tr><td>${row.coche}</td><td>${row.total_cacerias}</td><td>${row.puntos_totales}</td></tr>`;
+        });
+        html += "</table>";
+        clasDiv.innerHTML = html;
+      }).catch(err => {
+        clasDiv.innerHTML = "Error al cargar: " + err;
+      });
+    }
+
+    // Cacerías individuales
+    let caceriasGlobal = [];
+    function cargarCacerias() {
+      const dropdown = document.getElementById('caceriasDropdown');
+      dropdown.disabled = true;
+      dropdown.innerHTML = '<option value="">Cargando...</option>';
+      document.getElementById('caceriaInfo').innerHTML = "";
+      document.getElementById('caceriaResultados').innerHTML = "";
+      db.ref("cacerias").once("value").then(snapshot => {
+        const cacerias = snapshot.val();
+        caceriasGlobal = [];
+        let caceriasUnicas = [];
+        if (cacerias) {
+          Object.values(cacerias).forEach(cac => {
+            const nombre = cac.nombre || "Sin nombre";
+            caceriasUnicas.push(nombre);
+            if (cac.participantes) {
+              Object.values(cac.participantes).forEach(part => {
+                caceriasGlobal.push({
+                  caceria: nombre,
+                  posicion: part.posicion_llegada || "",
+                  coche: part.nombre_participante || "",
+                  puntos: part.puntos || "",
+                  tiempo: part.tiempo_carrera || "",
+                  hora_llegada: part.hora_llegada || "",
+                  hora_salida: cac.hora_salida || "",
+                  ubicacion: cac.ubicacion || "",
+                  zorro: cac.id_zorro || ""
+                });
+              });
+            }
+          });
+        }
+        caceriasUnicas = [...new Set(caceriasUnicas)].sort();
+        dropdown.innerHTML = '<option value="">Selecciona una cacería</option>' +
+          caceriasUnicas.map(c => `<option value="${c}">${c}</option>`).join('');
+        dropdown.disabled = false;
+      });
+    }
+
+    function mostrarCaceria() {
+      const nombre = document.getElementById('caceriasDropdown').value;
+      const infoDiv = document.getElementById('caceriaInfo');
+      const resDiv = document.getElementById('caceriaResultados');
+      if (!nombre) {
+        infoDiv.innerHTML = "";
+        resDiv.innerHTML = "";
+        return;
+      }
+      const rows = caceriasGlobal.filter(row => row.caceria === nombre);
+      if (!rows.length) {
+        infoDiv.innerHTML = "No hay datos para mostrar.";
+        resDiv.innerHTML = "";
+        return;
+      }
+      const first = rows[0];
+      let mapsUrl = first.ubicacion ? `https://www.google.com/maps/search/${encodeURIComponent(first.ubicacion)}` : null;
+      infoDiv.innerHTML = `
+        <b>Cacería:</b> ${first.caceria}<br>
+        <b>Ubicación:</b> ${first.ubicacion ? `<a href="${mapsUrl}" target="_blank">${first.ubicacion}</a>` : "N/A"}<br>
+        <b>Zorro:</b> ${first.zorro || "N/A"}<br>
+        <b>Hora de salida:</b> ${first.hora_salida || "N/A"}
+      `;
+      // Tabla de resultados
+      let html = `<table>
+        <thead>
+          <tr>
+            <th>Posición</th>
+            <th>Participante</th>
+            <th>Puntos</th>
+            <th>Tiempo carrera</th>
+            <th>Hora llegada</th>
+          </tr>
+        </thead>
+        <tbody>`;
+      rows.sort((a, b) => {
+        const pa = parseInt(a.posicion) || 9999, pb = parseInt(b.posicion) || 9999;
+        return pa - pb;
+      }).forEach(row => {
+        html += `<tr>
+          <td>${row.posicion}</td>
+          <td>${row.coche}</td>
+          <td>${row.puntos}</td>
+          <td>${row.tiempo}</td>
+          <td>${row.hora_llegada}</td>
+        </tr>`;
+      });
+      html += "</tbody></table>";
+      resDiv.innerHTML = html;
+    }
+
+    // --- NUEVO: Añadir cacería ---
+    function abrirFormularioCaceria() {
+      document.getElementById('modalCaceria').style.display = 'flex';
+      document.getElementById('formCaceria').reset();
+      document.getElementById('participantes').innerHTML = '';
+      agregarParticipante(); // Al menos un participante por defecto
+    }
+    function cerrarFormularioCaceria() {
+      document.getElementById('modalCaceria').style.display = 'none';
+    }
+    function agregarParticipante() {
+      const idx = document.querySelectorAll('#participantes .participante').length;
+      const div = document.createElement('div');
+      div.className = 'participante';
+      div.style = "border:1px solid #374151; border-radius:6px; padding:10px; margin-bottom:8px; background:#263238;";
+      div.innerHTML = `
+        <label class="modern-label">Nombre:
+          <input name="nombre_participante" required class="modern-input">
+        </label>
+        <label class="modern-label">Posición:
+          <input name="posicion_llegada" class="modern-input" style="width:80px">
+        </label>
+        <label class="modern-label">Puntos:
+          <input name="puntos" class="modern-input" style="width:80px">
+        </label>
+        <label class="modern-label">Hora llegada:
+          <input name="hora_llegada" class="modern-input" style="width:110px">
+        </label>
+        <label class="modern-label">Tiempo carrera:
+          <input name="tiempo_carrera" class="modern-input" style="width:110px">
+        </label>
+        <label style="margin-left:10px;">
+          <input type="checkbox" name="mostrar_en_clasificacion" checked> Mostrar en clasificación
+        </label>
+        <button type="button" class="btn-eliminar" onclick="this.parentNode.remove()">Eliminar</button>
+      `;
+      document.getElementById('participantes').appendChild(div);
+    }
+
+    document.getElementById('formCaceria').onsubmit = function(e) {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(this).entries());
+      // Participantes
+      const participantesDivs = document.querySelectorAll('#participantes .participante');
+      const participantes = {};
+      let idx = 1;
+      for (const div of participantesDivs) {
+        const nombre = div.querySelector('input[name="nombre_participante"]').value.trim();
+        if (!nombre) continue;
+        participantes['part_' + idx] = {
+          nombre_participante: nombre,
+          posicion_llegada: div.querySelector('input[name="posicion_llegada"]').value,
+          puntos: div.querySelector('input[name="puntos"]').value,
+          hora_llegada: div.querySelector('input[name="hora_llegada"]').value,
+          tiempo_carrera: div.querySelector('input[name="tiempo_carrera"]').value,
+          mostrar_en_clasificacion: div.querySelector('input[name="mostrar_en_clasificacion"]').checked ? "true" : "false"
+        };
+        idx++;
+      }
+      if (Object.keys(participantes).length === 0) {
+        alert("Añade al menos un participante.");
+        return;
+      }
+      // Guardar en Firebase
+      db.ref("cacerias").push({
+        nombre: data.nombre,
+        ubicacion: data.ubicacion,
+        id_zorro: data.zorro,
+        hora_salida: data.hora_salida,
+        participantes: participantes
+      }).then(() => {
+        cerrarFormularioCaceria();
+        cargarClasificacion();
+        cargarCacerias();
+        alert("¡Cacería guardada!");
+      }).catch(err => {
+        alert("Error al guardar: " + err);
+      });
+    };
+
+    // --- NUEVO: Protección por contraseña para añadir cacería ---
+    function pedirPasswordCaceria() {
+      const pass = prompt("Introduce la contraseña para añadir una cacería:");
+      if (pass === "4321") {
+        abrirFormularioCaceria();
+      } else if (pass !== null) {
+        alert("Contraseña incorrecta");
+      }
+    }
+
+    // Carga la clasificación al iniciar
+    cargarClasificacion();
+  </script>
+</body>
+</html>
