@@ -174,6 +174,11 @@
     <div style="position:relative; z-index:2;">
       <h1>CULLA Ranking Cacerias </h1>
       <h2>🏆 Clasificación General</h2>
+      <div style="margin-bottom:10px;">
+        <button id="btnClasCoche" onclick="mostrarClasificacion('coche')" style="background:#ff9800;">Por coche</button>
+        <button id="btnClasPart" onclick="mostrarClasificacion('participante')" style="background:#4fc3f7; color:#23272f;">Por participante</button>
+        <select id="temporadaVisualizar" class="modern-input" style="width:auto;display:inline-block;margin-left:16px;"></select>
+      </div>
       <div id="clasificacion" class="table-responsive" style="position:relative; z-index:2;"></div>
       <h2>📊 Detalles de Cacerías Individuales</h2>
       <button onclick="cargarCacerias()">Cargar Cacerías</button>
@@ -190,6 +195,11 @@
           style="background:#23272f; padding:24px; border-radius:10px; max-width:600px; margin:auto; color:#fff;
                  display:flex; flex-direction:column; max-height:90vh; overflow-y:auto;">
           <h2>Añadir Cacería</h2>
+          <label class="modern-label">Temporada:
+            <select id="temporadaSelect" name="temporada" required class="modern-input">
+              <option value="">Cargando temporadas...</option>
+            </select>
+          </label>
           <label class="modern-label">Nombre de la cacería:
             <input name="nombre" required class="modern-input">
           </label>
@@ -205,7 +215,7 @@
           <hr>
           <h3>Participantes</h3>
           <div id="participantes"></div>
-          <button type="button" onclick="agregarParticipante()" style="background:#4fc3f7; margin-bottom:10px;">Añadir Participante</button>
+          <button type="button" onclick="agregarParticipante()" style="background:#4fc3f7; margin-bottom:10px;">Añadir Coche</button>
           <br>
           <button type="submit">Guardar</button>
           <button type="button" onclick="cerrarFormularioCaceria()" style="background:#888;">Cancelar</button>
@@ -222,40 +232,87 @@
       projectId: "caceripro",
       // ...otros datos si los necesitas...
     };
-    firebase.initializeApp(firebaseConfig);
+    // Asegúrate de inicializar Firebase solo una vez
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
     const db = firebase.database();
 
-    // Clasificación General
+    // Variables para guardar las clasificaciones
+    let clasificacionCoche = [];
+    let clasificacionParticipante = [];
+    let modoClasificacion = 'coche';
+    // Asegúrate de definir temporadaSeleccionada por defecto
+    let temporadaSeleccionada = "Temporada_25";
+
     function cargarClasificacion() {
       const clasDiv = document.getElementById('clasificacion');
       clasDiv.innerHTML = "Cargando...";
-      db.ref("cacerias").once("value").then(snapshot => {
+      db.ref(temporadaSeleccionada).once("value").then(snapshot => {
         const cacerias = snapshot.val();
+        const coches = {};
         const participantes = {};
         if (cacerias) {
           Object.values(cacerias).forEach(cac => {
             if (cac.participantes) {
               Object.values(cac.participantes).forEach(part => {
                 if (String(part.mostrar_en_clasificacion ?? "true").toLowerCase() !== "true") return;
-                const nombre = part.nombre_participante || "Desconocido";
+                const nombreCoche = part.nombre_Coche || "Desconocido";
                 const puntos = parseInt(part.puntos || 0);
-                if (!participantes[nombre]) participantes[nombre] = { coche: nombre, total_cacerias: 0, puntos_totales: 0 };
-                participantes[nombre].total_cacerias += 1;
-                participantes[nombre].puntos_totales += puntos;
+
+                // Clasificación por coche
+                if (!coches[nombreCoche]) coches[nombreCoche] = { coche: nombreCoche, total_cacerias: 0, puntos_totales: 0 };
+                coches[nombreCoche].total_cacerias += 1;
+                coches[nombreCoche].puntos_totales += puntos;
+
+                // Clasificación por participante (todos los del array)
+                if (Array.isArray(part.participantes)) {
+                  part.participantes.forEach(nombre => {
+                    nombre = (nombre || "").trim();
+                    if (!nombre) return;
+                    if (!participantes[nombre]) participantes[nombre] = { participante: nombre, total_cacerias: 0, puntos_totales: 0 };
+                    participantes[nombre].total_cacerias += 1;
+                    participantes[nombre].puntos_totales += puntos;
+                  });
+                }
               });
             }
           });
         }
-        const lista = Object.values(participantes).sort((a, b) => b.puntos_totales - a.puntos_totales);
-        let html = "<table><tr><th>Coche</th><th>Total cacerías</th><th>Puntos totales</th></tr>";
-        lista.forEach(row => {
+        clasificacionCoche = Object.values(coches).sort((a, b) => b.puntos_totales - a.puntos_totales);
+        clasificacionParticipante = Object.values(participantes).sort((a, b) => b.puntos_totales - a.puntos_totales);
+        mostrarClasificacion(modoClasificacion);
+      }).catch(err => {
+        document.getElementById('clasificacion').innerHTML = "Error al cargar: " + err;
+      });
+    }
+
+    function mostrarClasificacion(modo) {
+      modoClasificacion = modo;
+      const clasDiv = document.getElementById('clasificacion');
+      let html = "";
+      if (modo === 'coche') {
+        html = "<table><tr><th>Coche</th><th>Total cacerías</th><th>Puntos totales</th></tr>";
+        clasificacionCoche.forEach(row => {
           html += `<tr><td>${row.coche}</td><td>${row.total_cacerias}</td><td>${row.puntos_totales}</td></tr>`;
         });
         html += "</table>";
-        clasDiv.innerHTML = html;
-      }).catch(err => {
-        clasDiv.innerHTML = "Error al cargar: " + err;
-      });
+        document.getElementById('btnClasCoche').style.background = '#ff9800';
+        document.getElementById('btnClasCoche').style.color = '#fff';
+        document.getElementById('btnClasPart').style.background = '#4fc3f7';
+        document.getElementById('btnClasPart').style.color = '#23272f';
+      } else {
+        html = "<table><tr><th>Participante</th><th>Total cacerías</th><th>Puntos totales</th></tr>";
+        clasificacionParticipante.forEach(row => {
+          html += `<tr><td>${row.participante}</td><td>${row.total_cacerias}</td><td>${row.puntos_totales}</td></tr>`;
+        });
+        html += "</table>";
+        document.getElementById('btnClasCoche').style.background = '#4fc3f7';
+        document.getElementById('btnClasCoche').style.color = '#23272f';
+        document.getElementById('btnClasPart').style.background = '#ff9800';
+        document.getElementById('btnClasPart').style.color = '#fff';
+      }
+      clasDiv.innerHTML = html;
     }
 
     // Cacerías individuales
@@ -266,7 +323,7 @@
       dropdown.innerHTML = '<option value="">Cargando...</option>';
       document.getElementById('caceriaInfo').innerHTML = "";
       document.getElementById('caceriaResultados').innerHTML = "";
-      db.ref("cacerias").once("value").then(snapshot => {
+      db.ref(temporadaSeleccionada).once("value").then(snapshot => {
         const cacerias = snapshot.val();
         caceriasGlobal = [];
         let caceriasNombres = [];
@@ -276,14 +333,15 @@
             const nombre = cac.nombre || "Sin nombre";
             if (!caceriasNombres.includes(nombre)) {
               caceriasNombres.push(nombre);
-              ultimaCaceriaNombre = nombre; // Siempre se sobrescribe, así queda el último
+              ultimaCaceriaNombre = nombre;
             }
             if (cac.participantes) {
               Object.values(cac.participantes).forEach(part => {
                 caceriasGlobal.push({
                   caceria: nombre,
                   posicion: part.posicion_llegada || "",
-                  coche: part.nombre_participante || "",
+                  coche: part.nombre_Coche || "",
+                  participantes: Array.isArray(part.participantes) ? part.participantes : [],
                   puntos: part.puntos || "",
                   tiempo: part.tiempo_carrera || "",
                   hora_llegada: part.hora_llegada || "",
@@ -316,7 +374,15 @@
         resDiv.innerHTML = "";
         return;
       }
-      const rows = caceriasGlobal.filter(row => row.caceria === nombre);
+      // Filtrar solo una fila por coche (la primera que aparece)
+      const rows = [];
+      const cochesMostrados = new Set();
+      caceriasGlobal.filter(row => row.caceria === nombre).forEach(row => {
+        if (!cochesMostrados.has(row.coche)) {
+          rows.push(row);
+          cochesMostrados.add(row.coche);
+        }
+      });
       if (!rows.length) {
         infoDiv.innerHTML = "No hay datos para mostrar.";
         resDiv.innerHTML = "";
@@ -335,7 +401,8 @@
         <thead>
           <tr>
             <th>Posición</th>
-            <th>Participante</th>
+            <th>Coche</th>
+            <th>Participantes</th>
             <th>Puntos</th>
             <th>Tiempo carrera</th>
             <th>Hora llegada</th>
@@ -349,6 +416,7 @@
         html += `<tr>
           <td>${row.posicion}</td>
           <td>${row.coche}</td>
+          <td>${row.participantes.map(p => `<span>${p}</span>`).join(', ')}</td>
           <td>${row.puntos}</td>
           <td>${row.tiempo}</td>
           <td>${row.hora_llegada}</td>
@@ -363,6 +431,7 @@
       document.getElementById('modalCaceria').style.display = 'flex';
       document.getElementById('formCaceria').reset();
       document.getElementById('participantes').innerHTML = '';
+      cargarTemporadasEnFormulario();
       agregarParticipante(); // Al menos un participante por defecto
     }
     function cerrarFormularioCaceria() {
@@ -374,9 +443,17 @@
       div.className = 'participante';
       div.style = "border:1px solid #374151; border-radius:6px; padding:10px; margin-bottom:8px; background:#263238;";
       div.innerHTML = `
-        <label class="modern-label">Nombre:
-          <input name="nombre_participante" required class="modern-input">
+        <label class="modern-label">Coche:
+          <input name="nombre_Coche" required class="modern-input">
         </label>
+        <div class="participantes-coche">
+          <label class="modern-label">Participantes:
+            <div class="participantes-list">
+              <input name="participante" required class="modern-input" placeholder="Nombre participante">
+            </div>
+            <button type="button" class="btn-agregar-part" style="background:#81c784; color:#23272f; margin-top:5px;">Añadir participante</button>
+          </label>
+        </div>
         <label class="modern-label">Posición:
           <input name="posicion_llegada" class="modern-input" style="width:80px">
         </label>
@@ -392,23 +469,94 @@
         <label style="margin-left:10px;">
           <input type="checkbox" name="mostrar_en_clasificacion" checked> Mostrar en clasificación
         </label>
-        <button type="button" class="btn-eliminar" onclick="this.parentNode.remove()">Eliminar</button>
+        <button type="button" class="btn-eliminar" onclick="this.parentNode.remove()">Eliminar coche</button>
       `;
+      // Añadir funcionalidad para añadir/quitar participantes dentro del coche
+      setTimeout(() => {
+        const btnAdd = div.querySelector('.btn-agregar-part');
+        btnAdd.onclick = function() {
+          const list = div.querySelector('.participantes-list');
+          const input = document.createElement('input');
+          input.name = "participante";
+          input.className = "modern-input";
+          input.placeholder = "Nombre participante";
+          input.style.marginTop = "5px";
+          // Botón para eliminar participante
+          const btnDel = document.createElement('button');
+          btnDel.type = "button";
+          btnDel.textContent = "Eliminar";
+          btnDel.className = "btn-eliminar";
+          btnDel.style.marginLeft = "8px";
+          btnDel.onclick = function() { input.remove(); btnDel.remove(); };
+          list.appendChild(input);
+          list.appendChild(btnDel);
+        };
+      }, 10);
       document.getElementById('participantes').appendChild(div);
+    }
+
+    // Cargar temporadas disponibles desde la base de datos
+    function cargarTemporadasEnFormulario() {
+      const select = document.getElementById('temporadaSelect');
+      select.innerHTML = '<option value="">Cargando temporadas...</option>';
+      db.ref().once('value').then(snapshot => {
+        const data = snapshot.val();
+        const temporadas = Object.keys(data || {}).filter(key => key.startsWith('Temporada_'));
+        if (temporadas.length === 0) {
+          select.innerHTML = '<option value="">No hay temporadas</option>';
+        } else {
+          select.innerHTML = temporadas.map(t => `<option value="${t}">${t}</option>`).join('');
+          // Selecciona la temporada actual por defecto si existe
+          select.value = temporadaSeleccionada;
+        }
+      });
+    }
+
+    // Cargar temporadas para el selector principal
+    function cargarTemporadasVisualizar() {
+      const select = document.getElementById('temporadaVisualizar');
+      select.innerHTML = '<option value="">Cargando temporadas...</option>';
+      db.ref().once('value').then(snapshot => {
+        const data = snapshot.val();
+        const temporadas = Object.keys(data || {}).filter(key => key.startsWith('Temporada_'));
+        if (temporadas.length === 0) {
+          select.innerHTML = '<option value="">No hay temporadas</option>';
+        } else {
+          select.innerHTML = temporadas.map(t => `<option value="${t}">${t}</option>`).join('');
+          // Selecciona la temporada actual por defecto si existe
+          select.value = temporadaSeleccionada;
+        }
+      });
+      // Cambia la temporada al cambiar el selector
+      select.onchange = function() {
+        if (select.value) {
+          temporadaSeleccionada = select.value;
+          cargarClasificacion();
+          cargarCacerias();
+        }
+      };
     }
 
     document.getElementById('formCaceria').onsubmit = function(e) {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(this).entries());
+      const temporada = data.temporada || "Temporada_25";
+      temporadaSeleccionada = temporada;
       // Participantes
       const participantesDivs = document.querySelectorAll('#participantes .participante');
       const participantes = {};
       let idx = 1;
       for (const div of participantesDivs) {
-        const nombre = div.querySelector('input[name="nombre_participante"]').value.trim();
-        if (!nombre) continue;
+        const nombreCoche = div.querySelector('input[name="nombre_Coche"]').value.trim();
+        if (!nombreCoche) continue;
+        // Recoger todos los participantes de este coche
+        const nombres = Array.from(div.querySelectorAll('input[name="participante"]'))
+          .map(inp => inp.value.trim())
+          .filter(n => n);
+        if (nombres.length === 0) continue;
         participantes['part_' + idx] = {
-          nombre_participante: nombre,
+          nombre_Coche: nombreCoche,
+          participantes: nombres,
           posicion_llegada: div.querySelector('input[name="posicion_llegada"]').value,
           puntos: div.querySelector('input[name="puntos"]').value,
           hora_llegada: div.querySelector('input[name="hora_llegada"]').value,
@@ -418,11 +566,11 @@
         idx++;
       }
       if (Object.keys(participantes).length === 0) {
-        alert("Añade al menos un participante.");
+        alert("Añade al menos un coche con participantes.");
         return;
       }
-      // Guardar en Firebase
-      db.ref("cacerias").push({
+      // Guardar en Firebase bajo la temporada seleccionada
+      db.ref(temporada).push({
         nombre: data.nombre,
         ubicacion: data.ubicacion,
         id_zorro: data.zorro,
@@ -448,9 +596,12 @@
       }
     }
 
-    // Carga la clasificación al iniciar
-    cargarClasificacion();
-    cargarCacerias(); // <-- Añadido para cargar y mostrar la última cacería automáticamente
+    // Espera a que el DOM esté listo antes de cargar datos
+    document.addEventListener('DOMContentLoaded', function() {
+      cargarTemporadasVisualizar();
+      cargarClasificacion();
+      cargarCacerias();
+    });
   </script>
 </body>
 </html>
